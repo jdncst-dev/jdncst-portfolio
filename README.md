@@ -7,7 +7,7 @@ This is the source code for my portfolio website at [jdncst.dev](https://jdncst.
 ### Todo
 
 - [x] Update the `README.md` file
-- [ ] Clean up codebase
+- [x] Clean up codebase
 - [ ] Search for design references
 
 ## Deployment
