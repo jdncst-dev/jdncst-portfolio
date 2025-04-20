@@ -1,34 +1,37 @@
-# Stage 1: Builder
-FROM node:18-alpine AS builder
-
-# Install dependencies
-RUN apk add --no-cache libc6-compat
-
-RUN npm install -g pnpm
-
+# Install dependencies only when needed
+FROM node:20-alpine AS deps
 WORKDIR /app
 
-COPY package*.json ./
-RUN pnpm install
+# Install pnpm
+RUN npm install -g pnpm
 
+# Copy package files and install dependencies
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+
+# Rebuild the source code only when needed
+FROM node:20-alpine AS builder
+WORKDIR /app
+
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-RUN pnpm run build
+RUN pnpm build
 
-# Stage 2: Production
-FROM node:18-alpine AS production
-
-RUN npm install -g pnpm
-
+# Production image, copy only necessary files
+FROM node:20-alpine AS runner
 WORKDIR /app
 
-# Only copy the built output and production deps
-COPY package*.json ./
-RUN pnpm install --prod
+ENV NODE_ENV=production
 
-COPY --from=builder /app/.next .next
-COPY --from=builder /app/next.config.ts ./
+# Copy built app and node_modules
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/public ./public
 COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+
+# If you use Tailwind, you may need to copy your styles
+COPY --from=builder /app/src ./src
 
 EXPOSE 3000
 

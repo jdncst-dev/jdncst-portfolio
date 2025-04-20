@@ -1,45 +1,74 @@
-name: 🚀 Auto Deploy to Server
+name: Build & Deploy Docker App
 
 on:
   push:
     branches:
       - main
 
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  IMAGE_TAG: ${{ github.sha }}
+  APP_DOMAIN: portfolio.jdncst.dev
+  CONTAINER_NAME: jdncst-portfolio
+  BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
 jobs:
-  test:
+  build-and-push:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
         with:
-          node-version: 18
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install dependencies
-        run: npm install -g pnpm && pnpm install
-
-      - name: Run lint
-        run: pnpm lint
-
-      - name: Run build check
-        run: pnpm build
+      - name: Build & Push Docker image
+        run: |
+          IMAGE_NAME_LOWER=$(echo "${IMAGE_NAME}" | tr '[:upper:]' '[:lower:]')
+          docker build -t $REGISTRY/$IMAGE_NAME_LOWER:$IMAGE_TAG .
+          docker push $REGISTRY/$IMAGE_NAME_LOWER:$IMAGE_TAG
 
   deploy:
-    needs: test
     runs-on: ubuntu-latest
+    needs: build-and-push
 
     steps:
-      - name: Connect to server and deploy
+      - name: SSH & Deploy
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: 22
+          envs: REGISTRY,IMAGE_NAME,IMAGE_TAG,APP_DOMAIN,CONTAINER_NAME,BREVO_API_KEY,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY
           script: |
-            cd /root/jdncst-portfolio
-            git pull
-            docker-compose down
-            docker-compose build --no-cache
-            docker-compose up -d
+            export IMAGE_NAME_LOWER=$(echo "${IMAGE_NAME}" | tr '[:upper:]' '[:lower:]')
+            echo "Deploying $REGISTRY/$IMAGE_NAME_LOWER:$IMAGE_TAG to $APP_DOMAIN"
+
+            docker pull $REGISTRY/$IMAGE_NAME_LOWER:$IMAGE_TAG
+            docker stop $CONTAINER_NAME || true
+            docker rm $CONTAINER_NAME || true
+
+            docker run -d --name $CONTAINER_NAME \
+              --restart unless-stopped \
+              --network web \
+              -e BREVO_API_KEY="$BREVO_API_KEY" \
+              -e AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" \
+              -e AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" \
+              -l "traefik.enable=true" \
+              -l "traefik.http.routers.$CONTAINER_NAME.rule=Host(\`$APP_DOMAIN\`)" \
+              -l "traefik.http.routers.$CONTAINER_NAME.entrypoints=websecure" \
+              -l "traefik.http.routers.$CONTAINER_NAME.tls.certresolver=letsencrypt" \
+              -l "traefik.http.services.$CONTAINER_NAME.loadbalancer.server.port=3000" \
+              $REGISTRY/$IMAGE_NAME_LOWER:$IMAGE_TAG
