@@ -11,9 +11,6 @@ env:
   IMAGE_TAG: ${{ github.sha }}
   APP_DOMAIN: portfolio.jdncst.dev
   CONTAINER_NAME: jdncst-portfolio
-  BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
-  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
 jobs:
   build-and-push:
@@ -63,9 +60,6 @@ jobs:
             docker run -d --name $CONTAINER_NAME \
               --restart unless-stopped \
               --network web \
-              -e BREVO_API_KEY="$BREVO_API_KEY" \
-              -e AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" \
-              -e AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" \
               -l "traefik.enable=true" \
               -l "traefik.http.routers.$CONTAINER_NAME.rule=Host(\`$APP_DOMAIN\`)" \
               -l "traefik.http.routers.$CONTAINER_NAME.entrypoints=websecure" \
