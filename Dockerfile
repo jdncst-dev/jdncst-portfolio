@@ -13,6 +13,9 @@ RUN pnpm install --frozen-lockfile
 FROM node:20-alpine AS builder
 WORKDIR /app
 
+# Install pnpm in this stage too!
+RUN npm install -g pnpm
+
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
@@ -24,13 +27,14 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
+# Install pnpm in runner if you use it (for 'pnpm start')
+RUN npm install -g pnpm
+
 # Copy built app and node_modules
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
-
-# If you use Tailwind, you may need to copy your styles
 COPY --from=builder /app/src ./src
 
 EXPOSE 3000
